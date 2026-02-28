@@ -1,11 +1,20 @@
 package com.sky.service.impl;
 
+import com.github.pagehelper.Page;
+import com.github.pagehelper.PageHelper;
+import com.sky.constant.MessageConstant;
+import com.sky.constant.StatusConstant;
 import com.sky.dto.DishDTO;
+import com.sky.dto.DishPageQueryDTO;
 import com.sky.entity.Dish;
 import com.sky.entity.DishFlavor;
+import com.sky.exception.DeletionNotAllowedException;
 import com.sky.mapper.DishFlavorMapper;
 import com.sky.mapper.DishMapper;
+import com.sky.mapper.SetmealDishMapper;
+import com.sky.result.PageResult;
 import com.sky.service.DishService;
+import com.sky.vo.DishVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,7 +31,8 @@ public class DishServiceImpl implements DishService {
     private DishMapper dishMapper;
     @Autowired
     private DishFlavorMapper dishFlavorMapper;
-
+    @Autowired
+    private SetmealDishMapper setMealDishMapper;
 
     /*
     * 新增菜品和对应的口味
@@ -53,5 +63,108 @@ public class DishServiceImpl implements DishService {
         }
     }
 
+    /*分页查询*/
+    public PageResult pageQuery(DishPageQueryDTO dishPageQueryDTO) {
+        PageHelper.startPage(dishPageQueryDTO.getPage(),dishPageQueryDTO.getPageSize());
+        Page<DishVO> page=dishMapper.pageQuery(dishPageQueryDTO);
+        return new PageResult(page.getTotal(),page.getResult());
+    }
+
+
+    /*批量删除菜品*/
+    @Transactional
+    public void delete(List<Long> ids) {
+        //判断当前菜品是否在起售中
+        for (Long id : ids) {
+            Dish dish = dishMapper.getById(id);
+            if(dish.getStatus() == StatusConstant.ENABLE){
+                log.error("触发状态异常");
+                //当前菜品不能删除
+                throw new DeletionNotAllowedException(MessageConstant.DISH_ON_SALE);
+            }
+        }
+
+        //判断当前菜品是否被其它套餐关联
+        List<Long> setMealIds = setMealDishMapper.getSetMealDishIds(ids);
+        log.info("查询到的关联套餐为：{}", setMealIds);
+        if(setMealIds.size()>0&&setMealIds != null){
+            log.error("出发关联异常");
+            throw new DeletionNotAllowedException(MessageConstant.CATEGORY_BE_RELATED_BY_SETMEAL);
+        }
+        //删除菜品数据
+        for (Long id : ids) {
+            dishMapper.delete(id);
+            //删除口味数据
+            dishFlavorMapper.deleteByDishId(id);
+        }
+
+
+    }
+
+    @Override
+    public DishVO selectByIdWithFlavor(Long id) {
+        //根据ID查询dish的数据
+         Dish dish = dishMapper.selectById(id);
+        //根据id查询与dish相关的口味的数据
+        List<DishFlavor> dishFlavors = dishFlavorMapper.selectById(id);
+        //将查询的数据封装到VO
+        DishVO dishVO = new DishVO();
+        BeanUtils.copyProperties(dish, dishVO);
+        dishVO.setFlavors(dishFlavors);
+        return dishVO;
+    }
+
+
+
+    @Transactional
+    public void updateWithFlavor(DishDTO dishDTO) {
+        Dish dish = new Dish();
+        BeanUtils.copyProperties(dishDTO, dish);
+        //修改菜品表的信息
+        dishMapper.update(dish);
+
+        //删除原有的口味
+        dishFlavorMapper.deleteByDishId(dish.getId());
+
+        //重新插入新的口味
+        List<DishFlavor> flavors = dishDTO.getFlavors();
+        if (flavors != null&& flavors.size()>0) {
+            flavors.forEach(dishFlavor -> {
+                dishFlavor.setDishId(dishDTO.getId());
+            });
+            //像口味表插入n条数据
+            try {
+                dishFlavorMapper.insertBatch(flavors); // 这里出问题
+            } catch (Exception e) {
+                log.error("插入口味数据失败: {}", e.getMessage(), e);
+                throw e; // 必须抛出，让事务回滚（也方便定位）
+            }
+        }
+
+    }
+
+
+    //更改菜品状态
+    @Override
+    public void startOrStop(Integer status, Long id) {
+        Dish dish = new Dish();
+        dish.setStatus(status);
+        dish.setId(id);
+        dishMapper.update(dish);
+    }
+
+
+    /**
+     * 根据分类id查询菜品
+     * @param categoryId
+     * @return
+     */
+    public List<Dish> list(Long categoryId) {
+        Dish dish = Dish.builder()
+                .categoryId(categoryId)
+                .status(StatusConstant.ENABLE)
+                .build();
+        return dishMapper.list(dish);
+    }
 }
 

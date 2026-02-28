@@ -24,6 +24,9 @@ public interface EmployeeMapper {
 
     //分页查询
     Page<Employee> getQuery(EmployeePageQueryDTO employeePageQueryDTO);
+
+
+
     @AutoFill(value = OperationType.UPDATE)
     void update(Employee employee);
 

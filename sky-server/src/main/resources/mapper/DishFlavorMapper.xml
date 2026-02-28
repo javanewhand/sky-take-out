@@ -11,4 +11,7 @@
                 (#{df.dishId},#{df.name},#{df.value})
             </foreach>
     </insert>
+    <select id="selectById" resultType="com.sky.entity.DishFlavor">
+        select *from dish_flavor where dish_id=#{dishId}
+    </select>
 </mapper>
