@@ -16,7 +16,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/admin/common")
 @Slf4j
-public class CommonController {
+public class  CommonController {
 
     @Autowired
     private AliOSSUtils ossUtil;
