@@ -118,9 +118,6 @@ public class EmployeeServiceImpl implements EmployeeService {
         employee.setPassword(DigestUtils.md5DigestAsHex(PasswordConstant.DEFAULT_PASSWORD.getBytes()));
 
 
-
-
-
         //设置当前的默认修改时间和创建时间
         //employee.setStatus(StatusConstant.ENABLE);
         //employee.setCreateTime(LocalDateTime.now());

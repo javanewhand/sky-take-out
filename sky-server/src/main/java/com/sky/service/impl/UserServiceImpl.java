@@ -50,6 +50,8 @@ public class UserServiceImpl implements UserService {
         }
         return user;
     }
+
+
     private String getOpenId(String code) {
         //调用微信接口服务，获得当前用户id
         Map<String,String> map=new HashMap<>();

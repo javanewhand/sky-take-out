@@ -46,7 +46,10 @@ public class JwtTokenUserInterceptor implements HandlerInterceptor {
         //2、校验令牌
         try {
             log.info("jwt校验:{}", token);
+            //存储
+            // 并检验token中的有效载荷，这也是JWT令牌校验的核心代码
             Claims claims = JwtUtil.parseJWT(jwtProperties.getUserSecretKey(), token);
+
             Long userId = Long.valueOf(claims.get(JwtClaimsConstant.USER_ID).toString());
             log.info("当前用户id：", userId);
             BaseContext.setCurrentId(userId);

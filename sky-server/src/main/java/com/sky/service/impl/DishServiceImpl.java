@@ -19,15 +19,21 @@ import com.sky.vo.DishVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+
 @Slf4j
 @Service
 public class DishServiceImpl implements DishService {
 
+
+    @Autowired
+    private RedisTemplate redisTemplate;
     @Autowired
     private DishMapper dishMapper;
     @Autowired
@@ -59,7 +65,11 @@ public class DishServiceImpl implements DishService {
             });
             //像口味表插入n条数据
             try {
-                dishFlavorMapper.insertBatch(flavors); // 这里出问题
+                dishFlavorMapper.insertBatch(flavors);// 这里出问题
+
+                //清理缓存数据
+                String key="dish:"+dishDTO.getId();
+                clearCache(key);
             } catch (Exception e) {
                 log.error("插入口味数据失败: {}", e.getMessage(), e);
                 throw e; // 必须抛出，让事务回滚（也方便定位）
@@ -86,6 +96,7 @@ public class DishServiceImpl implements DishService {
                 //当前菜品不能删除
                 throw new DeletionNotAllowedException(MessageConstant.DISH_ON_SALE);
             }
+
         }
 
         //判断当前菜品是否被其它套餐关联
@@ -101,7 +112,8 @@ public class DishServiceImpl implements DishService {
             //删除口味数据
             dishFlavorMapper.deleteByDishId(id);
         }
-
+        //清理缓存数据
+        clearCache("dish:*");
 
     }
 
@@ -126,6 +138,8 @@ public class DishServiceImpl implements DishService {
         BeanUtils.copyProperties(dishDTO, dish);
         //修改菜品表的信息
         dishMapper.update(dish);
+        //清理缓存数据
+        clearCache("dish:*");
 
         //删除原有的口味
         dishFlavorMapper.deleteByDishId(dish.getId());
@@ -138,7 +152,7 @@ public class DishServiceImpl implements DishService {
             });
             //像口味表插入n条数据
             try {
-                dishFlavorMapper.insertBatch(flavors); // 这里出问题
+                dishFlavorMapper.insertBatch(flavors);// 这里出问题
             } catch (Exception e) {
                 log.error("插入口味数据失败: {}", e.getMessage(), e);
                 throw e; // 必须抛出，让事务回滚（也方便定位）
@@ -155,6 +169,8 @@ public class DishServiceImpl implements DishService {
         dish.setStatus(status);
         dish.setId(id);
         dishMapper.update(dish);
+        //清理缓存数据
+        clearCache("dish:*");
     }
 
 
@@ -178,6 +194,18 @@ public class DishServiceImpl implements DishService {
      * @return
      */
     public List<DishVO> listWithFlavor(Dish dish) {
+
+        //构造redis的key，规则：dish_id
+        String key="dish:"+ dish.getCategoryId();
+
+        //查询redis中是否存在菜品数据
+        List<DishVO> list = (List<DishVO>)redisTemplate.opsForValue().get(key);
+        if(list!=null&&list.size()>0){
+            //如果存在，直接返回，无需查询数据库
+            return list;
+        }
+
+        //如果不存在，查询mysql数据库
         List<Dish> dishList = dishMapper.list(dish);
 
         List<DishVO> dishVOList = new ArrayList<>();
@@ -192,8 +220,17 @@ public class DishServiceImpl implements DishService {
             dishVO.setFlavors(flavors);
             dishVOList.add(dishVO);
         }
-
+        //将数据放入redis中
+        redisTemplate.opsForValue().set(key,dishVOList);
         return dishVOList;
     }
+
+
+    private void clearCache(String pattern) {
+        Set keys=redisTemplate.keys("dish:*");
+        redisTemplate.delete(keys);
+        log.info("清理缓存");
+    }
+
 }
 
