@@ -88,4 +88,12 @@ public class OrderController {
         orderService.repetitionById(id);
         return Result.success();
     }
+
+    @GetMapping("/reminder/{id}")
+    @ApiOperation("客户催单")
+    public Result reminder(@PathVariable Long id){
+        log.info("根据客户id催单{}", id);
+        orderService.reminder(id);
+        return Result.success();
+    }
 }

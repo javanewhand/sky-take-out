@@ -20,6 +20,7 @@ import com.sky.vo.OrderPaymentVO;
 import com.sky.vo.OrderStatisticsVO;
 import com.sky.vo.OrderSubmitVO;
 import com.sky.vo.OrderVO;
+import com.sky.websocket.WebSocketServer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,6 +60,9 @@ public class OrderServiceImpl implements OrderService {
 
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private WebSocketServer webSocketServer;
     /*
     *
     * 用户下单
@@ -88,7 +92,7 @@ public class OrderServiceImpl implements OrderService {
         Orders orders = new Orders();
         BeanUtils.copyProperties(ordersSubmitDTO, orders);
         orders.setOrderTime(LocalDateTime.now());
-        orders.setStatus(Orders.UN_PAID);
+        orders.setStatus(Orders.PENDING_PAYMENT);
         orders.setPayStatus(Orders.PAID);
         orders.setNumber(String.valueOf(System.currentTimeMillis()));
         orders.setPhone(addressBook.getPhone());
@@ -97,9 +101,9 @@ public class OrderServiceImpl implements OrderService {
         orders.setAddress(addressBook.getDetail());
         orderMapper.insert(orders);
         //向订单明细表插入n条数据
-        OrderDetail orderDetail = new OrderDetail();
-        List<OrderDetail> orderDetailList = new ArrayList<OrderDetail>();
+        List<OrderDetail> orderDetailList = new ArrayList();
         for(ShoppingCart cart : list){
+            OrderDetail orderDetail = new OrderDetail();
             BeanUtils.copyProperties(cart, orderDetail);
             orderDetail.setOrderId(orders.getId());//设置当前订单明细关联的订单id
             orderDetailList.add(orderDetail);
@@ -167,6 +171,17 @@ public class OrderServiceImpl implements OrderService {
                 .build();
 
         orderMapper.update(orders);
+
+        Map map = new HashMap();
+        //1表示来单提醒,2表示客户催单
+        map.put("type",1);
+        map.put("orderId",ordersDB.getId());
+        map.put("content","订单号"+outTradeNo);
+
+        String jsonString = JSON.toJSONString(map);
+        webSocketServer.sendToAllClient(jsonString);
+
+
     }
 
     @Override
@@ -483,6 +498,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
 
+
+
     /**
      * 检查客户的收货地址是否超出配送范围
      * @param address
@@ -547,4 +564,19 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+
+    @Override
+    public void reminder(Long id) {
+        Orders ordersDB = orderMapper.getById(id);
+        if(ordersDB == null) {
+            throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
+        }
+        Map map = new HashMap();
+        map.put("type",2);
+        map.put("orderId",id);
+        map.put("content","订单号:"+ordersDB.getNumber());
+
+        //通过WEBSOCKET向客户端推送消息
+        webSocketServer.sendToAllClient(JSON.toJSONString(map));
+    }
 }
